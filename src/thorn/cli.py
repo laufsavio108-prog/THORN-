@@ -19,6 +19,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from . import __version__
@@ -187,7 +188,7 @@ def ref(
             console.print(f"[bold cyan]{cat}[/]")
             if full:
                 for c in cmds:
-                    console.print(f"  [bold]{c.name:<16}[/] [dim]{c.desc}[/]")
+                    console.print(f"  [bold]{c.name:<16}[/] [dim]{escape(c.desc)}[/]")
             else:
                 console.print("  " + "  ".join(c.name for c in cmds))
             console.print()
@@ -211,21 +212,21 @@ def ref(
     console.print(f"[dim]{len(hits)} resultado(s) para '{query}':[/]\n")
     table = Table("comando", "o que faz")
     for c in hits:
-        table.add_row(f"[bold]{c.name}[/] [dim]({c.tool})[/]", c.desc)
+        table.add_row(f"[bold]{escape(c.name)}[/] [dim]({c.tool})[/]", escape(c.desc))
     console.print(table)
     console.print("\n[dim]detalhe: thorn ref <comando>[/]")
 
 
 def _print_command(c: reference.Command) -> None:
-    console.print(f"\n[bold cyan]{c.name}[/]  [dim]· {c.tool} · {c.cat}[/]")
-    console.print(f"{c.desc}\n")
-    console.print(f"[bold]uso[/]  {c.usage}")
+    console.print(f"\n[bold cyan]{escape(c.name)}[/]  [dim]· {c.tool} · {c.cat}[/]")
+    console.print(f"{escape(c.desc)}\n")
+    console.print(f"[bold]uso[/]  {escape(c.usage)}")
     if c.examples:
         console.print("[bold]exemplos[/]")
         for ex in c.examples:
-            console.print(f"  {ex}")
+            console.print(f"  {escape(ex)}")
     if c.tip:
-        console.print(f"\n[yellow]dica[/]  {c.tip}")
+        console.print(f"\n[yellow]dica[/]  {escape(c.tip)}")
     console.print()
 
 
@@ -236,14 +237,14 @@ def explain(words: list[str] = typer.Argument(None, help="comando de rede, ex: c
         console.print("[yellow]uso:[/] thorn explain curl google.com   (ou: ip a · ping 8.8.8.8 · dig google.com)")
         raise typer.Exit(1)
 
-    console.print(f"\n[bold]THORN / EXPLAIN[/]  •  [dim]{' '.join(words)}[/]\n")
+    console.print(f"\n[bold]THORN / EXPLAIN[/]  •  [dim]{escape(' '.join(words))}[/]\n")
     for st in explain_mod.run(words):
         style = explain_mod.LAYER_STYLE.get(st.layer, "white")
         mark = "" if st.ok else "[red]✗[/] "
-        console.print(f"{mark}[{style} bold] {st.layer:<4}[/]  {st.title}")
+        console.print(f"{mark}[{style} bold] {st.layer:<4}[/]  {escape(st.title)}")
         for d in st.detail:
-            console.print(f"        [dim]{d}[/]")
-        console.print(f"        {st.explain}\n")
+            console.print(f"        [dim]{escape(d)}[/]")
+        console.print(f"        {escape(st.explain)}\n")
 
 
 @app.command()
@@ -255,18 +256,18 @@ def investigate(env: str, problem: str) -> None:
     loop = AgentLoop(store, LlmGateway(s))
     result = loop.investigate(e.id, problem)
 
-    console.print(f"\n[bold]THORN / INVESTIGAÇÃO[/]  •  ambiente: [cyan]{env}[/]")
-    console.print(f"problema: {problem}\n")
+    console.print(f"\n[bold]THORN / INVESTIGAÇÃO[/]  •  ambiente: [cyan]{escape(env)}[/]")
+    console.print(f"problema: {escape(problem)}\n")
 
     if result.similar:
         table = Table("incidente similar", "score")
         for title, score in result.similar:
-            table.add_row(title, f"{score:.2f}")
+            table.add_row(escape(title), f"{score:.2f}")
         console.print(table)
     else:
         console.print("[dim]nenhum incidente parecido neste ambiente.[/]")
 
-    console.print(f"\n[bold]Recomendação[/]\n{result.recommendation}\n")
+    console.print(f"\n[bold]Recomendação[/]\n{escape(result.recommendation)}\n")
 
 
 if __name__ == "__main__":
