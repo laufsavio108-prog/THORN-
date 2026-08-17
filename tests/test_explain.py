@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from thorn import explain
 from thorn.explain.http import parse_url
-from thorn.explain.netcmd import parse_ip_addr, parse_ip_route, parse_ping
+from thorn.explain.netcmd import (
+    estimate_hops,
+    parse_ip_addr,
+    parse_ip_route,
+    parse_ping,
+    parse_traceroute,
+)
 
 # --- parse_url ---------------------------------------------------------
 
@@ -62,6 +68,32 @@ def test_parse_ping() -> None:
     assert st["ttl"] == 115
     assert st["loss"] == 0
     assert st["rtt_avg"] == 12.5
+
+
+_TRACE = """traceroute to google.com (142.250.79.14), 20 hops max, 60 byte packets
+ 1  10.0.2.2  0.234 ms
+ 2  *
+ 3  100.65.0.1  10.512 ms
+ 4  142.250.79.14  12.001 ms
+"""
+
+
+def test_parse_traceroute() -> None:
+    hops = parse_traceroute(_TRACE)
+    assert len(hops) == 4
+    assert hops[0]["ip"] == "10.0.2.2"
+    assert hops[1]["timeout"] is True   # a linha com *
+    assert hops[3]["ip"] == "142.250.79.14"
+    assert hops[3]["ms"] == 12.001
+
+
+def test_estimate_hops() -> None:
+    # TTL 250 → começou em 255 → 5 saltos (o caso que o usuário viu)
+    assert estimate_hops(250) == (5, 255)
+    # TTL 115 → começou em 128 → 13 saltos
+    assert estimate_hops(115) == (13, 128)
+    # TTL 60 → começou em 64 → 4 saltos
+    assert estimate_hops(60) == (4, 64)
 
 
 # --- dispatcher --------------------------------------------------------

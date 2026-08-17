@@ -15,12 +15,14 @@ from .steps import Step
 _TIMEOUT = 8
 
 
-def _run(argv: list[str]) -> tuple[bool, str]:
+def _run(argv: list[str], timeout: int = _TIMEOUT) -> tuple[bool, str]:
     if sys.platform.startswith("win"):
         return False, "esse comando roda na Kali (Linux) — no Windows não existe."
     try:
-        p = subprocess.run(argv, capture_output=True, text=True, timeout=_TIMEOUT)
+        p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
         return p.returncode == 0, (p.stdout or p.stderr)
+    except FileNotFoundError:
+        return False, f"'{argv[0]}' não está instalado (tente: sudo apt install {argv[0]})"
     except (OSError, subprocess.TimeoutExpired) as e:
         return False, str(e)
 
@@ -122,6 +124,18 @@ def parse_ping(text: str) -> dict:
     return out
 
 
+def estimate_hops(ttl: int) -> tuple[int, int]:
+    """Estima (saltos, ttl_inicial) a partir do TTL que CHEGOU.
+
+    O TTL começa num padrão (64 Linux, 128 Windows, 255 rede) e cada roteador
+    tira 1. Então saltos = inicial_provável − ttl_recebido. Parser puro.
+    """
+    for initial in (64, 128, 255):
+        if ttl <= initial:
+            return initial - ttl, initial
+    return 0, ttl
+
+
 def _explain_ping(host: str, text: str) -> list[Step]:
     st = parse_ping(text)
     ip = st.get("ip", "?")
@@ -136,10 +150,16 @@ def _explain_ping(host: str, text: str) -> list[Step]:
         title += f"  ·  {loss}% perda"
     detail = []
     if ttl is not None:
-        detail.append(f"TTL={ttl} (saltos que o pacote ainda podia dar — cai 1 por roteador)")
+        hops, initial = estimate_hops(ttl)
+        detail.append(
+            f"TTL={ttl}: começou provavelmente em {initial} e perdeu {hops} "
+            f"→ quem respondeu está a ~{hops} roteador(es) de você"
+        )
     return [Step("ICMP", title,
-        "O ping manda pacotes ICMP 'echo' e mede o tempo de ida e volta (RTT). Serve pra "
-        "responder duas coisas: o host está VIVO? e a rede está RÁPIDA? Perda 0% = estável.",
+        "O ping manda pacotes ICMP 'echo' e mede o tempo de ida e volta (RTT). Responde "
+        "duas coisas: o host está VIVO? e a rede está RÁPIDA? (perda 0% = estável). O TTL "
+        "não é 'quanto falta pra chegar' — é um contador que cai 1 por roteador; comparando "
+        "com o valor inicial padrão dá pra estimar a DISTÂNCIA em saltos.",
         detail, ok=ok)]
 
 
@@ -148,3 +168,85 @@ def explain_ping(host: str) -> list[Step]:
     if not out:
         return [Step("INFO", "ping falhou", "", ["sem saída"], ok=False)]
     return _explain_ping(host, out)
+
+
+# ---------------- traceroute ----------------
+
+def parse_traceroute(text: str) -> list[dict]:
+    """Cada salto: {num, ip, ms, timeout}. Parser puro."""
+    hops: list[dict] = []
+    for line in text.splitlines():
+        m = re.match(r"^\s*(\d+)\s+(.*)$", line)
+        if not m:
+            continue
+        num = int(m.group(1))
+        rest = m.group(2)
+        ip_m = re.search(r"\d+\.\d+\.\d+\.\d+", rest)
+        ms_m = re.search(r"([\d.]+)\s*ms", rest)
+        hops.append({
+            "num": num,
+            "ip": ip_m.group(0) if ip_m else None,
+            "ms": float(ms_m.group(1)) if ms_m else None,
+            "timeout": ip_m is None,
+        })
+    return hops
+
+
+def _is_private(ip: str | None) -> bool:
+    return bool(ip and (ip.startswith("10.") or ip.startswith("192.168.")
+                        or re.match(r"172\.(1[6-9]|2\d|3[01])\.", ip)))
+
+
+def _explain_traceroute(host: str, text: str) -> list[Step]:
+    hops = parse_traceroute(text)
+    if not hops:
+        return [Step("INFO", "traceroute sem saltos", "", [text[:200]], ok=False)]
+
+    last = hops[-1]
+    reached = not last["timeout"]
+    last_resp = max((i for i, h in enumerate(hops) if not h["timeout"]), default=-1)
+
+    detail = []
+    for i, h in enumerate(hops):
+        # colapsa a fileira final de timeouts numa linha só
+        if not reached and i > last_resp:
+            faltam = len(hops) - i
+            ini = hops[i]["num"]
+            detail.append(f"{ini}–{last['num']}. sem resposta ({faltam} saltos até o teto)")
+            break
+        if h["timeout"]:
+            detail.append(f"{h['num']:>2}. *   (roteador não respondeu)")
+        else:
+            t = f"{h['ms']:.0f} ms" if h["ms"] is not None else ""
+            detail.append(f"{h['num']:>2}. {h['ip']:<18} {t}")
+
+    title = f"caminho até {host}: {len(hops)} saltos"
+    if reached:
+        title += f" (chegou em {last['ip']})"
+    steps = [Step("IP", title,
+        "O traceroute usa o truque do TTL: manda pacotes com TTL=1, depois 2, 3... "
+        "Cada roteador que zera o TTL responde 'Time Exceeded' e se revela — assim ele "
+        "mapeia roteador por roteador o caminho até o destino. Linhas com * = não respondeu.",
+        detail, ok=reached)]
+
+    # diagnóstico: só o 1º salto (privado) respondeu → provável NAT engolindo o traceroute
+    responded = [h for h in hops if not h["timeout"]]
+    if not reached and last_resp <= 0 and responded and _is_private(responded[0]["ip"]):
+        steps.append(Step("INFO", "só o 1º salto respondeu — o NAT está engolindo o traceroute",
+            f"O salto 1 ({responded[0]['ip']}) é o roteador NAT da sua VM (VirtualBox). O NAT "
+            "do VirtualBox não repassa os pacotes do traceroute, então os saltos seguintes "
+            "somem. Não é erro do THORN nem da sua internet. Pra ver o caminho completo: "
+            "rode 'tracert google.com' no Windows (host), OU ponha a VM em rede 'Bridge'. "
+            "Dentro da VM, o modo TCP costuma furar o NAT: sudo traceroute -T -p 443 " + host,
+            ok=False))
+    return steps
+
+
+def explain_traceroute(host: str) -> list[Step]:
+    # -n numérico (rápido) · -q 1 uma sonda/salto · -w 2 espera 2s · -m 20 teto de saltos
+    ok, out = _run(["traceroute", "-n", "-q", "1", "-w", "2", "-m", "20", host], timeout=60)
+    if not out:
+        return [Step("INFO", "traceroute falhou", "", ["sem saída"], ok=False)]
+    if "não está instalado" in out or "not found" in out.lower():
+        return [Step("INFO", "traceroute não instalado", "Instale com: sudo apt install traceroute", [out], ok=False)]
+    return _explain_traceroute(host, out)

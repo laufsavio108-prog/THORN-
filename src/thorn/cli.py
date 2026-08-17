@@ -23,7 +23,7 @@ from rich.table import Table
 
 from . import __version__
 from .agent import AgentLoop
-from .banner import render_banner
+from .banner import render_banner, render_home
 from .config import load_settings
 from .llm import LlmGateway
 from .memory import MemoryStore
@@ -46,14 +46,14 @@ console = Console()
 
 @app.callback()
 def main(ctx: typer.Context) -> None:
-    """Sem subcomando: mostra o splash + resumo."""
+    """Sem subcomando: mostra a home (identidade + estado + menu)."""
     if ctx.invoked_subcommand is None:
-        render_banner(console)
         s = load_settings()
-        ai = "[green]ligada[/]" if s.ai_enabled else "[yellow]off[/]"
-        console.print(
-            f"  IA: {ai}   •   ambientes: {len(_store().list_environments())}"
-            "   •   [dim]thorn --help[/]\n"
+        render_home(
+            console,
+            ai_enabled=s.ai_enabled,
+            env_count=len(_store().list_environments()),
+            db_path=str(s.db_path),
         )
 
 
