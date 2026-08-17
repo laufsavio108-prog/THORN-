@@ -170,7 +170,7 @@ def _cli_confirm(reason: str, argv: list[str]) -> bool:
     return typer.confirm("executar?")
 
 
-@app.command("ref")
+@app.command("ref", context_settings={"ignore_unknown_options": True})
 def ref(
     words: list[str] = typer.Argument(None, help="comando (ex: git status) ou termo de busca"),
     tool: str = typer.Option("", "--tool", help="filtra o índice: linux | git"),
@@ -229,7 +229,7 @@ def _print_command(c: reference.Command) -> None:
     console.print()
 
 
-@app.command("explain")
+@app.command("explain", context_settings={"ignore_unknown_options": True})
 def explain(words: list[str] = typer.Argument(None, help="comando de rede, ex: curl google.com")) -> None:
     """Roda um comando de rede DE VERDADE e explica cada camada (DNS/TCP/TLS/HTTP)."""
     if not words:

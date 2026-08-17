@@ -9,6 +9,7 @@ from thorn.explain.netcmd import (
     parse_ip_addr,
     parse_ip_route,
     parse_ping,
+    parse_tcpdump,
     parse_traceroute,
 )
 
@@ -85,6 +86,22 @@ def test_parse_traceroute() -> None:
     assert hops[1]["timeout"] is True   # a linha com *
     assert hops[3]["ip"] == "142.250.79.14"
     assert hops[3]["ms"] == 12.001
+
+
+_TCPDUMP = """12:00:01.111 IP 10.0.2.15.43210 > 142.250.79.14.443: Flags [S], seq 1, win 64240
+12:00:01.222 IP 142.250.79.14.443 > 10.0.2.15.43210: Flags [S.], seq 9, ack 2
+12:00:01.333 IP 10.0.2.15.55000 > 8.8.8.8.53: UDP, length 34
+12:00:01.444 ARP, Request who-has 10.0.2.2 tell 10.0.2.15, length 28
+14 packets captured
+"""
+
+
+def test_parse_tcpdump() -> None:
+    pkts = parse_tcpdump(_TCPDUMP)
+    protos = [p["proto"] for p in pkts]
+    assert protos == ["TCP", "TCP", "UDP", "ARP"]  # a linha de status é ignorada
+    assert pkts[0]["flags"] == "S"                  # SYN puro
+    assert pkts[0]["src"] == "10.0.2.15.43210"
 
 
 def test_estimate_hops() -> None:

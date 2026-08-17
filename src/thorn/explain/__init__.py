@@ -11,11 +11,11 @@ from __future__ import annotations
 
 from .dns import explain_dns
 from .http import explain_http
-from .netcmd import explain_ip, explain_ping, explain_traceroute
+from .netcmd import explain_ip, explain_ping, explain_tcpdump, explain_traceroute
 from .steps import LAYER_STYLE, Step
 
 __all__ = ["run", "Step", "LAYER_STYLE", "explain_http", "explain_dns", "explain_ip",
-           "explain_ping", "explain_traceroute"]
+           "explain_ping", "explain_traceroute", "explain_tcpdump"]
 
 _HTTP_CMDS = {"curl", "wget"}
 _DNS_CMDS = {"dig", "nslookup", "host"}
@@ -46,10 +46,13 @@ def run(words: list[str]) -> list[Step]:
         return explain_ping(_last_target(words[1:]) or "")
     if head in ("traceroute", "tracert", "tracepath"):
         return explain_traceroute(_last_target(words[1:]) or "")
+    if head == "tcpdump":
+        return explain_tcpdump(words[1:])
 
     # sem comando reconhecido: se parece url/host, trata como HTTP
     if "." in head or "://" in head:
         return explain_http(words[0])
 
     return [Step("INFO", f"ainda não sei explicar '{head}'",
-        "Cobertos: curl, wget, dig, nslookup, ip, ping, traceroute. Ex: thorn explain traceroute google.com", ok=False)]
+        "Cobertos: curl, wget, dig, nslookup, ip, ping, traceroute, tcpdump. "
+        "Ex: thorn explain tcpdump port 443", ok=False)]

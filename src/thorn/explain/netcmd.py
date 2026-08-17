@@ -6,6 +6,7 @@ Os `explain_*` orquestram: rodam o comando via subprocess e chamam o parser.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -250,3 +251,87 @@ def explain_traceroute(host: str) -> list[Step]:
     if "não está instalado" in out or "not found" in out.lower():
         return [Step("INFO", "traceroute não instalado", "Instale com: sudo apt install traceroute", [out], ok=False)]
     return _explain_traceroute(host, out)
+
+
+# ---------------- tcpdump ----------------
+
+def parse_tcpdump(text: str) -> list[dict]:
+    """Cada pacote: {proto, src, dst, flags}. Parser puro."""
+    pkts: list[dict] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line[0].isalpha() and not re.match(r"\d{2}:\d{2}:\d{2}", line):
+            # linhas de status do tcpdump (ex: "N packets captured") não são pacotes
+            if "ARP" not in line:
+                continue
+        if "ARP" in line:
+            pkts.append({"proto": "ARP", "src": None, "dst": None, "flags": None})
+            continue
+        m = re.search(r"IP6?\s+(\S+?)\s+>\s+(\S+?):", line)
+        src, dst = (m.group(1), m.group(2)) if m else (None, None)
+        if "ICMP" in line:
+            proto = "ICMP"
+        elif "UDP" in line or re.search(r"\.53\b", line):
+            proto = "UDP"
+        elif "Flags [" in line or "tcp" in line.lower():
+            proto = "TCP"
+        elif m:
+            proto = "IP"
+        else:
+            continue
+        fm = re.search(r"Flags \[([^\]]*)\]", line)
+        pkts.append({"proto": proto, "src": src, "dst": dst, "flags": fm.group(1) if fm else None})
+    return pkts
+
+
+def _explain_tcpdump(text: str) -> list[Step]:
+    pkts = parse_tcpdump(text)
+    if not pkts:
+        return [Step("INFO", "nenhum pacote capturado",
+            "A rede estava quieta ou faltou permissão. Gere tráfego (ex.: um 'ping 8.8.8.8' "
+            "ou 'curl google.com' em OUTRO terminal) e rode de novo.", [text[:200]], ok=False)]
+
+    counts: dict[str, int] = {}
+    syns = 0
+    for p in pkts:
+        counts[p["proto"]] = counts.get(p["proto"], 0) + 1
+        if p["flags"] and "S" in p["flags"] and "." not in p["flags"]:
+            syns += 1
+    resumo = "  ·  ".join(f"{k}: {v}" for k, v in sorted(counts.items(), key=lambda x: -x[1]))
+
+    detail = [f"protocolos: {resumo}"]
+    if syns:
+        detail.append(f"{syns} pacote(s) SYN → conexões TCP começando (o 1º passo do handshake)")
+    for p in pkts[:6]:
+        if p["src"]:
+            fl = f" [{p['flags']}]" if p["flags"] else ""
+            detail.append(f"{p['proto']:<5} {p['src']} → {p['dst']}{fl}")
+        else:
+            detail.append(f"{p['proto']:<5} (broadcast/descoberta de vizinho)")
+
+    return [Step("IP", f"{len(pkts)} pacotes capturados",
+        "O tcpdump é o raio-x da rede: mostra os pacotes CRUS passando na placa, ao vivo. "
+        "Cada linha é um pacote real — quem falou com quem, em qual protocolo. É a ferramenta "
+        "de quem quer VER o que está acontecendo no fio (não só se 'funciona').",
+        detail)]
+
+
+def explain_tcpdump(extra: list[str]) -> list[Step]:
+    # captura curta e com teto: -c 14 pacotes, e 'timeout 12' encerra se a rede estiver quieta.
+    # ORDEM IMPORTA: sudo por FORA (controla o terminal e esconde a senha), timeout por DENTRO
+    # (limita só o tcpdump, DEPOIS da autenticação). O contrário faz a senha vazar na tela.
+    filtro = [w for w in extra if w]  # filtro opcional do usuário: ex "port 443", "icmp"
+    argv = ["timeout", "12", "tcpdump", "-n", "-c", "14", "-i", "any"] + filtro
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        argv = ["sudo"] + argv
+
+    ok, out = _run(argv, timeout=30)
+    if "não está instalado" in out or "command not found" in out.lower():
+        return [Step("INFO", "tcpdump não instalado", "Instale com: sudo apt install tcpdump", [out], ok=False)]
+    if "permission" in out.lower() or "sudo:" in out.lower() or "password" in out.lower():
+        return [Step("INFO", "precisa de root",
+            "Capturar pacotes exige privilégio. Rode 'thorn explain tcpdump' no SEU terminal "
+            "(interativo) — o THORN chama o tcpdump via sudo e o sudo vai pedir sua senha ali. "
+            "Não prefixe 'sudo thorn' (o thorn vive no venv, o root não o acha no PATH).",
+            [out.strip()[:160]], ok=False)]
+    return _explain_tcpdump(out)

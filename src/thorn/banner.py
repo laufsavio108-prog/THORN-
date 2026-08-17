@@ -31,6 +31,7 @@ _MENU = [
     ("rede — explica AO VIVO", [
         ("thorn explain curl google.com", "caminha DNS → TCP → TLS → HTTP com dados reais"),
         ("thorn explain ip r · ping · traceroute", "rotas/gateway, latência e caminho até o destino"),
+        ("thorn explain tcpdump [filtro]", "raio-x: pacotes crus passando na rede (precisa sudo)"),
     ]),
     ("referência", [
         ("thorn ref [-l]", "catálogo Linux + Git offline (busca tolera acento)"),
