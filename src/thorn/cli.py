@@ -27,6 +27,8 @@ from .banner import render_banner
 from .config import load_settings
 from .llm import LlmGateway
 from .memory import MemoryStore
+from . import explain as explain_mod
+from . import reference
 from .tools import ToolDenied, build_registry
 
 app = typer.Typer(
@@ -166,6 +168,82 @@ def tool_exec(
 def _cli_confirm(reason: str, argv: list[str]) -> bool:
     console.print(f"[yellow]ação sensível[/] ({reason}): [bold]{' '.join(argv)}[/]")
     return typer.confirm("executar?")
+
+
+@app.command("ref")
+def ref(
+    words: list[str] = typer.Argument(None, help="comando (ex: git status) ou termo de busca"),
+    tool: str = typer.Option("", "--tool", help="filtra o índice: linux | git"),
+    full: bool = typer.Option(False, "--full", "-l", help="mostra a descrição de cada comando"),
+) -> None:
+    """Catálogo de comandos Linux + Git (offline, busca tolerante a acento)."""
+    # junta as palavras: "git status" chega como ["git","status"] → sem precisar de aspas
+    query = " ".join(words) if words else ""
+
+    # sem argumento: índice por categoria
+    if not query:
+        groups = reference.by_category(tool or None)
+        for cat, cmds in groups.items():
+            console.print(f"[bold cyan]{cat}[/]")
+            if full:
+                for c in cmds:
+                    console.print(f"  [bold]{c.name:<16}[/] [dim]{c.desc}[/]")
+            else:
+                console.print("  " + "  ".join(c.name for c in cmds))
+            console.print()
+        hint = "detalhe: thorn ref <comando>   •   busca: thorn ref <termo>"
+        if not full:
+            hint = "tudo com descrição: thorn ref -l   •   " + hint
+        console.print(f"[dim]{hint}[/]")
+        return
+
+    # nome exato -> detalhe
+    cmd = reference.get(query)
+    if cmd is not None:
+        _print_command(cmd)
+        return
+
+    # senão -> busca
+    hits = reference.search(query)
+    if not hits:
+        console.print(f"[yellow]nada encontrado para '{query}'.[/]")
+        raise typer.Exit(1)
+    console.print(f"[dim]{len(hits)} resultado(s) para '{query}':[/]\n")
+    table = Table("comando", "o que faz")
+    for c in hits:
+        table.add_row(f"[bold]{c.name}[/] [dim]({c.tool})[/]", c.desc)
+    console.print(table)
+    console.print("\n[dim]detalhe: thorn ref <comando>[/]")
+
+
+def _print_command(c: reference.Command) -> None:
+    console.print(f"\n[bold cyan]{c.name}[/]  [dim]· {c.tool} · {c.cat}[/]")
+    console.print(f"{c.desc}\n")
+    console.print(f"[bold]uso[/]  {c.usage}")
+    if c.examples:
+        console.print("[bold]exemplos[/]")
+        for ex in c.examples:
+            console.print(f"  {ex}")
+    if c.tip:
+        console.print(f"\n[yellow]dica[/]  {c.tip}")
+    console.print()
+
+
+@app.command("explain")
+def explain(words: list[str] = typer.Argument(None, help="comando de rede, ex: curl google.com")) -> None:
+    """Roda um comando de rede DE VERDADE e explica cada camada (DNS/TCP/TLS/HTTP)."""
+    if not words:
+        console.print("[yellow]uso:[/] thorn explain curl google.com   (ou: ip a · ping 8.8.8.8 · dig google.com)")
+        raise typer.Exit(1)
+
+    console.print(f"\n[bold]THORN / EXPLAIN[/]  •  [dim]{' '.join(words)}[/]\n")
+    for st in explain_mod.run(words):
+        style = explain_mod.LAYER_STYLE.get(st.layer, "white")
+        mark = "" if st.ok else "[red]✗[/] "
+        console.print(f"{mark}[{style} bold] {st.layer:<4}[/]  {st.title}")
+        for d in st.detail:
+            console.print(f"        [dim]{d}[/]")
+        console.print(f"        {st.explain}\n")
 
 
 @app.command()
