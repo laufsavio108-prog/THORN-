@@ -5,9 +5,9 @@ from __future__ import annotations
 from thorn import reference
 
 
-def test_tem_linux_e_git() -> None:
+def test_tem_linux_git_docker() -> None:
     tools = {c.tool for c in reference.all_commands()}
-    assert tools == {"linux", "git"}
+    assert tools == {"linux", "git", "docker"}
 
 
 def test_get_por_nome_exato() -> None:

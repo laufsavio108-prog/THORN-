@@ -174,7 +174,7 @@ def _cli_confirm(reason: str, argv: list[str]) -> bool:
 @app.command("ref", context_settings={"ignore_unknown_options": True})
 def ref(
     words: list[str] = typer.Argument(None, help="comando (ex: git status) ou termo de busca"),
-    tool: str = typer.Option("", "--tool", help="filtra o índice: linux | git"),
+    tool: str = typer.Option("", "--tool", help="filtra o índice: linux | git | docker"),
     full: bool = typer.Option(False, "--full", "-l", help="mostra a descrição de cada comando"),
 ) -> None:
     """Catálogo de comandos Linux + Git (offline, busca tolerante a acento)."""

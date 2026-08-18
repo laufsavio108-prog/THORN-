@@ -236,4 +236,44 @@ COMMANDS: list[Command] = [
     Command("git stash", "git", "stash", "guarda mudanças temporariamente", "git stash",
             ["git stash  → guarda e limpa a área de trabalho",
              "git stash pop  → traz de volta"]),
+
+    # ================= DOCKER: rodar =================
+    Command("docker run", "docker", "rodar", "cria um container NOVO e roda a imagem", "docker run [opções] <imagem>",
+            ["sudo docker run hello-world  → teste rápido",
+             "sudo docker run -it ubuntu bash  → cria e entra (interativo)",
+             "sudo docker run -d nginx  → em segundo plano (detached)",
+             "sudo docker run -d -p 8080:80 --name web nginx  → porta host:container + nome"],
+            "run SEMPRE cria container novo. Pra religar um existente use 'docker start'."),
+
+    # ================= DOCKER: ver =================
+    Command("docker ps", "docker", "ver", "lista containers", "docker ps [-a]",
+            ["docker ps  → só os que estão rodando (Up)",
+             "docker ps -a  → todos (rodando + parados/Exited)"],
+            "um container fica Up enquanto o processo principal roda; nginx fica Up, 'bash' sai (Exited) no exit."),
+    Command("docker images", "docker", "ver", "lista as imagens baixadas/criadas", "docker images"),
+    Command("docker logs", "docker", "ver", "mostra a saída de um container", "docker logs <container>",
+            ["docker logs web  → ex.: o access log do nginx"]),
+
+    # ================= DOCKER: ciclo de vida =================
+    Command("docker stop", "docker", "ciclo de vida", "desliga um container (vira Exited, não some)", "docker stop <container>"),
+    Command("docker start", "docker", "ciclo de vida", "religa um container existente", "docker start <container>",
+            [], "start REAPROVEITA o mesmo container/ID — não cria outro (diferente do run)."),
+    Command("docker exec", "docker", "ciclo de vida", "entra/roda algo num container VIVO", "docker exec -it <container> bash",
+            ["docker exec -it web bash  → abre um shell dentro do container"],
+            "sair com 'exit' NÃO mata o container (diferente de um 'run -it')."),
+
+    # ================= DOCKER: faxina =================
+    Command("docker rm", "docker", "faxina", "apaga um container PARADO", "docker rm <container>",
+            ["docker container prune  → apaga todos os parados de uma vez (respeita os Up)"]),
+    Command("docker rmi", "docker", "faxina", "apaga uma IMAGEM", "docker rmi <imagem>",
+            [], "rm = containers · rmi = imagens. Não dá pra apagar imagem em uso por um container."),
+
+    # ================= DOCKER: criar imagem =================
+    Command("docker build", "docker", "imagem", "constrói uma imagem a partir de um Dockerfile", "docker build -t <nome> .",
+            ["sudo docker build -t meu-site .  → -t dá o nome; o '.' = esta pasta (não esqueça o ponto!)"],
+            "ciclo mental: escrever arquivos → Dockerfile → build → run."),
+    Command("Dockerfile", "docker", "imagem", "a receita pra construir uma imagem", "FROM <base> ; COPY <origem> <destino>",
+            ["FROM nginx:alpine  → herda de uma imagem base",
+             "COPY . /usr/share/nginx/html  → põe seus arquivos dentro da imagem"],
+            "FROM = base que você herda · COPY = leva seus arquivos pra dentro da imagem."),
 ]
